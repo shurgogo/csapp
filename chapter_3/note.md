@@ -42,40 +42,44 @@ Disassembly of section .text:
 ## x86-64 整数寄存器
 ![整数寄存器](integer_registers.png)
 
+
+
 ## 操作数指示符
 
 ![操作数指示符](operand_specifiers.png)
 
 ## 汇编指令
 
-### MOV
+### 移动指令
+
+#### MOV
 
 ![mov](mov.png)
 
 x86-64 限制从**内存**一个位置到**内存**另一个位置不能直接移动，例如 
 
-```txt
+```asm
 mov 0x104, 0x108
 ``` 
 
 是不被允许的，必须要通过寄存器中转
 
-```txt
+```asm
 mov 0x104, %rax
 mov %rax, 0x108
 ```
 
 注意⚠️： `movl` 命令会把高位置为 0, 例如
-```bash
+```asm
 movl $-1, %eax # 得到的 %rax 中的结果是 0x00000000FFFFFFFF
 ```
 
-### MOVZ 填0扩展
+#### MOVZ 填0扩展
 命令含有扩展的方向，比如 `bw` 表示1字节扩展到2字节
 ![movz](movz.png)
 
 
-### MOVS 符号扩展
+#### MOVS 符号扩展
 
 符号扩展的意思是如果最高位为1，则空余的位都会填1。
 
@@ -84,18 +88,18 @@ movl $-1, %eax # 得到的 %rax 中的结果是 0x00000000FFFFFFFF
 其中的 `cltq` 命令只作用于 `%eax` 和 `%rax`，不用带操作数。
 等价于 `movslq %eax, %rax`。
 
-## pushq 和 popq
+### pushq 和 popq
 
 ![push & pop](push_pop.png)
 
-## 算术和逻辑运算
+### 算术和逻辑运算
 
 ![operations](operations.png)
 
-### 取有效地址
+#### 取有效地址
 `leaq` (load effective address) 可以将计算后的地址写入到目标寄存器，常用来计算而不是取地址。
 
-### 移位
+#### 移位
 移位操作的移位量可以是立即数或存在 `%cl` 中的值。`%cl` 是单字节寄存器，8位二进制 > 64，因此可以用来做 64 bit计算机的移位量。通过在移位操作后加 `b,w,l,q` 如 `shll` 或 `shrq` 来决定具体移动位数。
 
 `b` 移动一个字节，用 `%cl` 中的低 3 位确定
@@ -127,7 +131,7 @@ x in %rdi, y in %rsi, z in %rdx
         ret
 ```
 
-### 乘法和除法
+#### 乘法和除法
 
 两个64位有符号或无符号数相乘需要128位(8字，oct word)，其中一个乘数必须存在于 `%rax` 寄存器中。乘积用 `%rdx` 存储高64位，用`%rax` 存储低64位。
 
@@ -162,9 +166,9 @@ remdiv:
     movq    %rdx, (%rcx)   余数移动到 %rcx 指向的地址
 ```
 
-## 控制流
+### 控制流
 
-### 条件码寄存器
+#### 条件码寄存器
 
 当  t = a + b
 
@@ -177,7 +181,7 @@ remdiv:
 
 carry, zero, symbol, overflow
 
-### 修改条件码
+#### 修改条件码
 
 除了 `leaq` 之外的所有算术和逻辑指令都会设置条件码
 
@@ -185,26 +189,26 @@ carry, zero, symbol, overflow
 
 ![比较和测试](compare_and_test.png)
 
-### 访问条件码
+#### 访问条件码
 
 ![访问条件码](access_condition_code.png)
 
 注意⚠️：`setl` 和 `setb` 中的 `l` 表示 less， `b` 表示 below。跟字节个数无关。
 
-### 跳转
+#### 跳转
 
 ![跳转](jump.png)
 
 当执行 PC 相对寻址时，程序计数器的值是跳转指令下一条指令的地址，而不是跳转指令本身的地址。
 
-### 条件移动
+#### 条件移动
 
 S 表示源，R 表示目的寄存器（为什么不用 D？）
 ![条件移动](condition_move.png)
 
 因为传送需要先计算不同分支的语句，如果语句出现错误或者副作用，就会 panic ，因此慎用。
 
-### 循环
+
 
 #### while
 
@@ -216,7 +220,7 @@ gcc 翻译 while 有两种策略：
 
 for 也可以被翻译成 jm 和 gd 两种形式。
 
-### switch语句
+#### switch语句
 
 由一个跳转表 jump table + 一个 cmp 命令组成。 jump table 根据索引跳转到指定位置（普通分支），cmp 用来比较是否所有的索引都不匹配（default 分支）。
 
@@ -288,10 +292,70 @@ switch_eg:
         .cfi_endproc
 ```
 
+## 过程（函数）
+过程 P 调用过程 Q 时，通过寄存器，过程 P 可以传递最多6个整数值（指针和整数），但如果 Q 需要更多参数，P 可以在调用 Q 之前在自己的栈帧中存储好这些参数。
+
+![栈帧结构](stack_frame_structure.png)
 
 
+### 地址转移控制流程： 
+- `call`: `sub $8, %rsp`, `mov %rip下一条指令的地址, (%rsp)`, `mov Q的地址,%rip`(即 `pushq %rip下一条指令的地址`,`jmp Q的地址`)
+- `ret`: 跟 `call` 正好相反
+![转移控制](call_return.png)
+
+### 数据传送
+
+栈内6个参数与寄存器对应关系
+
+![参数与寄存器](6_args_to_register.png)
+
+### 栈上局部存储
+
+- 寄存器数量不够
+- 对一个局部变量使用 `&` 取地址符号，此时会把变量 x 的值存入栈帧内存中，生成的栈帧内的地址给到 &x
+- 某些局部变量是数组或者结构，需要使用引用才能访问
+
+栈内变量顺序：一般栈顶(`%rsp` 减最多的地址)会存放最先出现的变量
+
+## 指针
+
+指针从一种类型强制转为另一种类型，只改变类型而不改变值。
+指针强制转换的优先级高于加法
+```c
+char *p
+(int *) p + 7    // p+28
+(int *) (p + 7) // p+7
+```
+
+## 缓冲溢出保护
+
+### 栈随机化
+每次运行时栈的位置发生变化，但防不住 nop sled 空操作雪橇攻击
+
+### 栈破坏检测
+在栈的局部缓冲区和栈状态之间插入随机产生的一个金丝雀(canary)值，也叫守卫值(guard value)。当这个值被溢出破坏时，程序异常中止。使用命令行选项 `-fno-stack-protector` 可以去掉此检测。
+
+### 限制可执行代码区域
+读、写、执行分离
 
 
+## AVX 媒体寄存器
+用于存浮点数，单精度和双精度浮点数都存于 XMM 寄存器
+![媒体寄存器](media_registers.png)
+
+## 浮点数移动指令
+引用内存的指令都是**标量指令**，只能移动单个数据值。
+GCC 只用标量指令从内存到寄存器或者从寄存器到内存移动数据；从寄存器到寄存器会使用 `vmosaps`和`vmosapd`。
+![浮点数移动指令](vmov.png)
+
+## 浮点数整数转换指令
+
+### 浮点数转整数
+vcvttss2si: 全称为 v(支持AVX), cvt(convert), t(truncate), s(scalar), s(single-precision), 2(to), s(signed), i(integer)·
+![浮点数转整数](vcvtt.png)
+
+### 整数转浮点数
+![整数转浮点数](vcvt.png)
 
 ## 补充
 ### 为什么 cmov 比 jmp 高效

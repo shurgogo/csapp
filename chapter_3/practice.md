@@ -485,3 +485,197 @@ void switcher(long a, long b, long c, long *dest) {
 - `.L6` 为 `*dest = val`
 - 到 `.L2` 的分支 a = 1，3，6 都没有在 case 中
 - 剩下按顺序排：5, 0, (2,7), 4
+
+## 3.33
+a, b, u, v
+int, short, long*, char*
+
+汇编中可能出现两者交换顺序的情况
+b, a, v, u
+int, short, long*, char*
+
+## 3.34
+A. a0~a5
+B. a6~a7
+不够用
+
+## 3.35
+
+```c
+long rfun(unsigned long x) {
+    if (x == 0)
+        return 0;
+    unsigned long nx = x >> 2;
+    long rv = rfun(nx);
+    return x + rv;
+}
+```
+
+## 3.36
+
+| Array | Element size | Total size | Start address |Element i|
+|---------|-------|----------|-------|---|
+|  S  | 2  |  14  | s | s+2i |
+|  T  | 8  |  24  | t | t+8i |
+|  U  | 8  |  48  | u | u+8i |
+|  V  | 4  |  32  | v | v+4i |
+|  W  | 8  |  32  | w | w+8i |
+
+## 3.37
+
+| Expression | Type | Value | Assembly code |
+|---------|-------|----------|-------|
+| S+1   | short * |  s+2    | `leaq 2(%rdx), %rax` |
+| s[3]  | short   | M[s+6]  | `movw 6(%rdx), %ax` |
+| &S[i] | short * | s+2i    | `leaq (%rdx,%rcx,), %rax` |
+| S[4*i+1]| short |M[s+8i+2]| `movw 2(%rdx,%rcx,8), %ax` |
+| S+i-5 |short *| s+2i-10 | `leaq -10(%rdx,%rcx,2)`,%rax |
+
+## 3.38
+M=5 N=7
+
+## 3.39
+
+$ \&D[i][j] = X_D + L * (C*i+j) $
+Aptr 从 i 行 0 列开始，每次地址+1，增加 1 列
+Bptr 从 0 行 k 列开始，每次地址+C，增加 1 行
+*Aptr = D[i][j]
+*Bptr = D[j][k]
+
+
+## 3.40
+
+```c
+#define N 16;
+
+void fix_set_diag_opt(fix_matrix A, int val) {
+    int *Aptr = &A[0][0];
+    int *end = &A[0][0] + N*(N+1);
+    do {
+        *Aptr = val;
+        Aptr += (N+1);
+    } while (Aptr != end);
+}
+```
+
+## 3.41
+
+A. 0, 8, 12, 16
+B. 24
+C.
+```c
+void sp_init(struct prob *sp) {
+    sp->s.x = sp->s.y;
+    sp->p   = &(sp->s.x);
+    sp->next= sp;
+}
+```
+
+## 3.42
+A. 
+```c
+long fun(struct ELE *ptr) {
+    long result = 0;
+    while (ptr) {
+        result += ptr->v;
+        ptr = ptr->p;
+    }
+    return result;
+}
+```
+
+## 3.43
+
+| expr | type | code |
+|---------|-------|----------|
+| up->t1.v | short  | `movw 8(%rdi), %ax` |
+|          |        | `movw %ax, (%rsi)`  |
+| &up->t1.w| char*  | `addq $10, %rdi`    |
+|          |        | `movq %rdi, (%rsi)` |
+| up->t2.a | int*   | `movq %rdi, (%rsi)` |
+| up->t2.a[up->t1.u] |int | `movq (%rdi), %rax` |
+|          |              | `movl (%rdi,%rax,4), %eax` |
+|          |              | `movl %eax, %(rsi)` |
+| *up->t2.p |char   | `movq 8(%rdi), %rax`|
+|          |        | `movb (%rax), %al`  |
+|          |        | `movb %al, (%rdi)`  |
+
+
+## 3.44
+A. i:0,c:4,j:8,d:12; size = 16; align=4
+B. i:0,c:4,d:5,j:8; size = 16; align=8
+c. w:0,c:6; size=10; align=2
+d. w:0,c:16; size=40; align=8
+d. a:0,t:24; size=40; align=8
+
+## 3.45
+A. a:0,b:8,c:16,d:24,e:28,f:32,g:40,h:48
+B. 56
+C. 
+```c
+struct {
+    char *a;
+    double c;
+    long g;
+    float e;
+    int h;
+    short b;
+    char d;
+    char f;
+} rec;
+```
+size = 40
+
+## 3.46
+A.
+
+|stack| description|
+|-|-|
+|00 00 00 00 00 40 00 76| return address|
+|01 23 45 67 89 AB CD EF| `%rbx`        |
+|                       | empty         |
+|                       | <-`%rsp`      | 
+
+B.
+
+|stack| description|
+|-|-|
+|00 00 00 00 00 40 00 34| return address|
+|33 32 31 30 39 38 37 36| `%rbx`        |
+|35 34 33 32 31 30 39 38| overflow      |
+|37 36 35 34 33 32 31 30| <-`%rsp`      | 
+
+C. 试图返回到 400034
+D. `%rbx`
+E. malloc(strlen(buf)+1); return 要检查 NULL
+
+## 3.47
+A. 8192 bytes
+B. 64次
+
+## 3.48
+A. 
+a) buf: 0; v: -24(%rsp)
+b) buf: -16(%rsp); v: -8(%rsp);canary:-40(%rsp)
+B. v更靠近栈顶，buf 溢出后不会影响 v；溢出后先破坏 canary，不会破坏返回值
+
+## 3.49
+A.  
+%rax = 22+8*n
+%rax &= -16 向下舍入到最接近16的倍数
+%rsp -= %rax
+
+B. 
+%rax = %rsp + 7
+%rax >> 3
+%r8 = %rax*8 向上舍入到最接近8的倍数
+%rcx = %r8
+
+C.
+
+|n|s1|s2|p|e1|e2|
+|-|-|-|-|-|-|
+|5|2065|2017|2024|1|7|
+|6|2064|2000|2000|16|0|
+
+D. s1 - s2 是16的对齐，p以8的倍数对齐
