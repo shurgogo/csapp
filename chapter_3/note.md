@@ -131,7 +131,7 @@ x in %rdi, y in %rsi, z in %rdx
         ret
 ```
 
-#### 乘法和除法
+### 乘法和除法
 
 两个64位有符号或无符号数相乘需要128位(8字，oct word)，其中一个乘数必须存在于 `%rax` 寄存器中。乘积用 `%rdx` 存储高64位，用`%rax` 存储低64位。
 
@@ -351,11 +351,38 @@ GCC 只用标量指令从内存到寄存器或者从寄存器到内存移动数�
 ## 浮点数整数转换指令
 
 ### 浮点数转整数
-vcvttss2si: 全称为 v(支持AVX), cvt(convert), t(truncate), s(scalar), s(single-precision), 2(to), s(signed), i(integer)·
+vcvttss2si: 全称为 Vector Convert with Truncate Scalar Single-Precision to Signed Integer
 ![浮点数转整数](vcvtt.png)
 
 ### 整数转浮点数
+可以忽略源2，源2只会影响结果的高位字节，常见命令如 `vcvtsi2sdq %rax %xmm1 %xmm1`，表示将一个 long 类型转换为 double 类型。
 ![整数转浮点数](vcvt.png)
+
+### 浮点数转浮点数(GCC)
+
+```asm
+vcvtss2sd %xmm0 %xmm0
+```
+
+## 浮点数算术运算
+
+注意⚠️：浮点数不能用立即数
+
+![浮点数算术运算](fp_arithmetic_operations.png)
+
+## 浮点数位运算
+
+![浮点数位运算](fp_bitwise_operations.png)
+
+## 浮点数比较操作(AVX2标准)
+
+![浮点数比较操作](fp_compare_operations.png)
+
+vucomiss: Unordered Compare and Set Flags with Scalar Double-Precision Floating-Point
+
+unordered 表示支持 NaN 的比较
+
+![浮点数比较标志位](fp_compare_flags.png)
 
 ## 补充
 ### 为什么 cmov 比 jmp 高效

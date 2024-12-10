@@ -11,17 +11,17 @@
 
 求
 
-|     Operand   | Value |
-|---------------|-------|
-|  `%rax`         | 0x100  |
-|  `0x104`        | 0xAB  |
-|  `$0x108`       | 0x108  |
-|  `(%rax)`       | 0xFF  |
-|  `4(%rax)`      | 0xAB |
-|  `9(%rax,%rdx)` | 0x11  |
+|      Operand      | Value |
+|-------------------|-------|
+|  `%rax`           | 0x100 |
+|  `0x104`          | 0xAB  |
+|  `$0x108`         | 0x108 |
+|  `(%rax)`         | 0xFF  |
+|  `4(%rax)`        | 0xAB  |
+|  `9(%rax,%rdx)`   | 0x11  |
 |  `260(%rcx,%rdx)` | 0x13  |
-|  `0xFC(,%rcx,4)`    | 0xFF  |
-|  `(%rax,%rdx,4)`    | 0x11  |
+|  `0xFC(,%rcx,4)`  | 0xFF  |
+|  `(%rax,%rdx,4)`  | 0x11  |
 
 
 ## 3.2
@@ -106,14 +106,14 @@ void decode1(long *xp, long *yp, long *zp) {
 
 ## 3.6
 
-|     instruction   | Result |
-|---------------|-------|
-|  `leaq 6(%rax), %rdx`         | 6+x  |
-|  `leaq (%rax,%rcx), %rdx`        | x+y  |
-|  `leaq (%rax,%rcx,4), %rdx`       | x+4y  |
-|  `leaq 7(%rax,%rax,8), %rdx`       | 7+9x  |
-|  `leaq 0xA(,%rcx,4), %rdx`      | 10+4y |
-|  `leaq 9(%rax,%rcx,2), %rdx` | 9+x+2y  |
+|          instruction         | Result |
+|------------------------------|--------|
+|  `leaq 6(%rax), %rdx`        | 6+x    |
+|  `leaq (%rax,%rcx), %rdx`    | x+y    |
+|  `leaq (%rax,%rcx,4), %rdx`  | x+4y   |
+|  `leaq 7(%rax,%rax,8), %rdx` | 7+9x   |
+|  `leaq 0xA(,%rcx,4), %rdx`   | 10+4y  |
+|  `leaq 9(%rax,%rcx,2), %rdx` | 9+x+2y |
 
 
 ## 3.7
@@ -139,7 +139,7 @@ long scale2(long x, long y, long z) {
 
 |         Instruction         | Destinatino | Value |
 |-----------------------------|-------------|-------|
-|  `addq %rcx, (%rax)         |    0x100    | 0x100 |
+|  `addq %rcx, (%rax)`        |    0x100    | 0x100 |
 |  `subq %rdx, 8(%rax)`       |    0x108    | 0xA8  |
 |  `imulq $16, (%rax,%rdx,8)` |    0x118    | 0x110 |
 |  `incq 16(%rax)`            |    0x110    | 0x14  |
@@ -514,22 +514,22 @@ long rfun(unsigned long x) {
 ## 3.36
 
 | Array | Element size | Total size | Start address |Element i|
-|---------|-------|----------|-------|---|
-|  S  | 2  |  14  | s | s+2i |
-|  T  | 8  |  24  | t | t+8i |
-|  U  | 8  |  48  | u | u+8i |
-|  V  | 4  |  32  | v | v+4i |
-|  W  | 8  |  32  | w | w+8i |
+|-------|--------------|------------|---------------|---------|
+|   S   |       2      |    14      |       s       |   s+2i  |
+|   T   |       8      |    24      |       t       |   t+8i  |
+|   U   |       8      |    48      |       u       |   u+8i  |
+|   V   |       4      |    32      |       v       |   v+4i  |
+|   W   |       8      |    32      |       w       |   w+8i  |
 
 ## 3.37
 
-| Expression | Type | Value | Assembly code |
-|---------|-------|----------|-------|
-| S+1   | short * |  s+2    | `leaq 2(%rdx), %rax` |
-| s[3]  | short   | M[s+6]  | `movw 6(%rdx), %ax` |
-| &S[i] | short * | s+2i    | `leaq (%rdx,%rcx,), %rax` |
-| S[4*i+1]| short |M[s+8i+2]| `movw 2(%rdx,%rcx,8), %ax` |
-| S+i-5 |short *| s+2i-10 | `leaq -10(%rdx,%rcx,2)`,%rax |
+| Expression |   Type  |   Value  |         Assembly code        |
+|------------|---------|----------|------------------------------|
+| S+1        | short * |  s+2     | `leaq 2(%rdx), %rax`         |
+| s[3]       | short   | M[s+6]   | `movw 6(%rdx), %ax`          |
+| &S[i]      | short * | s+2i     | `leaq (%rdx,%rcx,), %rax`    |
+| S[4*i+1]   | short   | M[s+8i+2]| `movw 2(%rdx,%rcx,8), %ax`   |
+| S+i-5      |short *  | s+2i-10  | `leaq -10(%rdx,%rcx,2),%rax` |
 
 ## 3.38
 M=5 N=7
@@ -586,19 +586,19 @@ long fun(struct ELE *ptr) {
 
 ## 3.43
 
-| expr | type | code |
-|---------|-------|----------|
-| up->t1.v | short  | `movw 8(%rdi), %ax` |
-|          |        | `movw %ax, (%rsi)`  |
-| &up->t1.w| char*  | `addq $10, %rdi`    |
-|          |        | `movq %rdi, (%rsi)` |
-| up->t2.a | int*   | `movq %rdi, (%rsi)` |
-| up->t2.a[up->t1.u] |int | `movq (%rdi), %rax` |
-|          |              | `movl (%rdi,%rax,4), %eax` |
-|          |              | `movl %eax, %(rsi)` |
-| *up->t2.p |char   | `movq 8(%rdi), %rax`|
-|          |        | `movb (%rax), %al`  |
-|          |        | `movb %al, (%rdi)`  |
+|         expr       | type  |           code            |
+|--------------------|-------|---------------------------|
+| up->t1.v           | short | `movw 8(%rdi), %ax`       |
+|                    |       | `movw %ax, (%rsi)`        |
+| &up->t1.w          | char* | `addq $10, %rdi`          |
+|                    |       | `movq %rdi, (%rsi)`       |
+| up->t2.a           | int*  | `movq %rdi, (%rsi)`       |
+| up->t2.a[up->t1.u] | int   | `movq (%rdi), %rax`       |
+|                    |       | `movl (%rdi,%rax,4), %eax`|
+|                    |       | `movl %eax, %(rsi)`       |
+| *up->t2.p          | char  | `movq 8(%rdi), %rax`      |
+|                    |       | `movb (%rax), %al`        |
+|                    |       | `movb %al, (%rdi)`        |
 
 
 ## 3.44
@@ -629,8 +629,8 @@ size = 40
 ## 3.46
 A.
 
-|stack| description|
-|-|-|
+|       stack           | description   |
+|-----------------------|---------------|
 |00 00 00 00 00 40 00 76| return address|
 |01 23 45 67 89 AB CD EF| `%rbx`        |
 |                       | empty         |
@@ -638,8 +638,8 @@ A.
 
 B.
 
-|stack| description|
-|-|-|
+|       stack           | description   |
+|-----------------------|---------------|
 |00 00 00 00 00 40 00 34| return address|
 |33 32 31 30 39 38 37 36| `%rbx`        |
 |35 34 33 32 31 30 39 38| overflow      |
@@ -673,9 +673,68 @@ B.
 
 C.
 
-|n|s1|s2|p|e1|e2|
-|-|-|-|-|-|-|
-|5|2065|2017|2024|1|7|
-|6|2064|2000|2000|16|0|
+|n| s1 | s2 | p  |e1|e2|
+|-|----|----|----|--|--|
+|5|2065|2017|2024|1 |7 |
+|6|2064|2000|2000|16|0 |
 
 D. s1 - s2 是16的对齐，p以8的倍数对齐
+
+## 3.50
+val1: d
+val2: i
+val3: l
+val4: f
+
+## 3.51
+
+gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0。long to float 用了 `cvtsi2ss`。
+
+|   Tx   |   Ty   |         Instruction             |
+|--------|--------|---------------------------------|
+| long   | double | `vcvtsi2sdq %rdi, %xmm0`        |
+| double | int    | `vcvttsd2si %xmm0, %eax`        |
+| double | float  | `vcvtsd2ss %xmm0, %xmm0`        |
+| long   | float  | `vcvtsi2ssq %rdi, %xmm0, %xmm0` |
+| float  | long   | `vcvttss2siq %xmm0, %rax`       |
+
+## 3.52
+A. a： %xmm0, b: %rdi, c: %xmm1, d: %esi
+B. a: %edi, b: %rsi, c: %rdx, d: %rcx
+C. a: %rdi, b: %xmm0, c: %esi, d: %xmm1
+D. a: %xmm0, b: %rdi, c: %xmm1, d: %xmm2
+
+## 3.53
+|arg1_t|arg2_t|arg3_t|arg4_t|
+|------|------|------|------|
+| int  | long | float|double|
+| int  | float| long |double|
+
+## 3.54
+```c
+double funct2(double w, int x, float y, long z) {
+    return y*x - w/z;
+}
+```
+
+## 3.55
+1077936128=0x40400000。因为是 double 类型，符号位+指数位=12，即 0x404，得到符号位为0，$E = 0x404-Bias = 5$。
+又因为小数位都为0，所以M=1。$V = (-1)^0 * M * 2^E = 32$
+
+## 3.56
+A. abs(x)
+B. x^x = 0.0
+C. -x
+
+## 3.57
+```c
+double funct3(int *ap, double b, long c, float *dp) {
+    int a = *ap;
+    float d = *dp;
+    if (a < b) {
+        return c * d;
+    } else {
+        return c+d*2;
+    }
+}
+```
