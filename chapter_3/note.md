@@ -389,11 +389,12 @@ unordered 表示支持 NaN 的比较
 
 CPU 流水线阶段：
 
-1. F (Fetch)：取指令。
-2. D (Decode)：解码指令。
-3. E (Execute)：执行指令。
-4. M (Memory Access)：访存。
-5. W (Write Back)：写回寄存器。
+1. F (Fetch): 取指令。
+2. D (Decode): 解码指令。
+3. E (Execute): 执行指令。
+4. M (Memory Access): 访存。
+5. W (Write Back): 写回寄存器。
+6. U (PC update): 更新PC
 
 延迟和时钟周期：
 

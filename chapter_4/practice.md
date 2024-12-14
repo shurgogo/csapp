@@ -127,3 +127,68 @@ A <= B && B <= C: B;
 C <= B && B <= A: B;
 1               : C;
 ]
+
+## 4.13
+
+| Stage     | `irmovq V, rB`       | `irmovq $128, %rsp`         |
+|-----------|----------------------|-----------------------------|
+| Fetch     | icode:ifun <- M1[PC] | icode:ifun <- M1[0x016]=3:0 |
+|           | rA:rB <- M1[PC+1]    | rA:rB <- M1[0x017]=F:4      |
+|           | valC <- M8[PC+2]     | valC <- M8[0x018]= 128      |
+|           | valP <- PC+10        | valP <- 0x016+10=0x020      |
+| Decode    |                      |                             |
+| Execute   | valE <- 0+valC       | valE <- 0+valC=128          |
+| Access    |                      |                             |
+| Write     | R[rB] <- valE        | R[%rsp] <- valE=128         |
+| PC Update | PC <- valP           | PC <- valP=0x020            |
+
+
+## 4.14
+
+| Stage     | `popq rA`            | `popq %rax`         |
+|-----------|----------------------|-----------------------------|
+| Fetch     | icode:ifun <- M1[PC] | icode:ifun <- M1[0x02c]=b:0 |
+|           | rA:rB <- M1[PC+1]    | rA:rB <- M1[0x02D]=0:F      |
+|           |                      |                             |                
+|           | valP <- PC+2         | valP <- 0x02c+2=0x02e       |
+| Decode    | valA <- R[%rsp]      | valA <- R[%rsp]=120         |
+|           | valB <- R[%rsp]      | valB <- R[%rsp]=120         |
+| Execute   | valE <- valB+8       | valE <- 120+8=128           |
+| Access    | valM <- M8[valA]     | valM <- M8[128]=9           |
+| Write     | R[%rsp] <- valE      | R[%rsp] <- valE=128         |
+|           | R[rA] <- valM        | R[%rax] <- valM=9           |
+| PC Update | PC <- valP           | PC <- valP=0x02e            |
+
+## 4.15
+会 push 旧值，与期望一致
+
+## 4.16
+会 pop 原来 %rsp 中的值到 %rsp，与期望一致
+
+## 4.17
+
+| Stage     | `cmovxx rA, rB`           |
+|-----------|---------------------------|
+| Fetch     | icode:ifun <- M1[PC]      |
+|           | rA:rB <- M1[PC+1]         |               
+|           | valP <- PC+2              |
+| Decode    | valA <- R[rA]             |
+| Execute   | Cnd <- Cond(CC, ifun)     |
+|           | valE <- valA              |
+| Access    |                           |
+| Write     | if(Cnd)R[rB]              |
+|           | R[rB] <- valE             |
+| PC Update | PC <- valP                |
+
+## 4.18
+
+| Stage     | `call Dest`          | `call 0x041`                |
+|-----------|----------------------|-----------------------------|
+| Fetch     | icode:ifun <- M1[PC] | icode:ifun <- M1[0x037]=8:0 |
+|           | valC <- M8[PC+1]     | valC <- M8[0x038]=0x041     |                
+|           | valP <- PC+9         | valP <- 0x037+9=0x040       |
+| Decode    | valB <- R[%rsp]      | valB <- R[%rsp]=128         |      
+| Execute   | valE <- valB-8       | valE <- 128-8=120           |
+| Access    | M8[valE] <- valP     | M8[120] <- valP=0x040       |
+| Write     | R[%rsp] <- valE      | R[%rsp] <- valE=120         |
+| PC Update | PC <- valC           | PC <- valC=0x041            |
