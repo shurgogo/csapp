@@ -113,8 +113,8 @@
 1. F (Fetch): 取出 icode 指令代码和 ifun 指令功能。可能取出 **1** 字节用来表示寄存器，可能取出 **8** 字节表示常数或地址 valC。并按顺序计算下一个 PC 值 valP。
 2. D (Decode): 从寄存器rA, rB读值，得到 valA/valB，有些指令（如 push和pop）会在此阶段读 `%rsp`。
 3. E (Execute): 执行算术或逻辑运算，计算内存引用的有效地址，增加或减少栈指针等，得到 valE。同时也可能设置或检查条件码。
-4. M (Memory Access): 可以将数据写入内存或从内存读出，读出的值为 valM。
-5. W (Write Back): 最多将2个结果写回寄存器。
+4. M (Memory Access, 以下简写为 Memory): 可以将数据写入内存或从内存读出，读出的值为 valM。
+5. W (Write Back, 以下简写为 Write): 最多将2个结果写回寄存器。
 6. U (PC update): 更新PC为 valP。
 
 示例：jmp、call和ret的流水线阶段，其余指令可以参考书，都有示例。
@@ -132,7 +132,8 @@
 - 细线表示字节或更小的数据，每条线由4根或8根线构成
 - 虚线表示位的数据，代表芯片上单元与块之间传递的控制值
 
-srcA，valA的源；srcB，valB的源；dstE，写入 valE 的寄存器；dstM，写入 valM 的寄存器。
+srcA，valA的源；srcB，valB的源；dstE，写入 valE 的寄存器， Excute 阶段写入的目的寄存器；dstM，写入 valM 的寄存器，Memory 阶段写入的目的寄存器。
+
 ![标识顺序实现中的不同计算步骤](SEQ_computation_steps.png)
 
 ### SEQ 时序
@@ -146,7 +147,7 @@ SEQ 的实现包括
 
 剩余的程序计数器、条件码寄存器、寄存器文件和数据内存都通过一个时钟信号来控制。
 
-每个时钟周期，程序计数器都会装载新的指令地址；只有在执行整数运算时，才会装载条件码寄存器；只有在执行 rmmovq、pushq和call指令时，才会写数据内存。寄存器文件的两个写端口允许每个时钟周期更新两个寄存器(比如pop指令，会写回%rsp和目标寄存器)，不过可以用特殊的寄存器ID 0xF 作为端口地址，来表明不该执行的写操作。
+每个时钟周期，程序计数器都会装载新的指令地址；只有在执行整数运算时，才会装载条件码寄存器；只有在执行 rmmovq、pushq和call指令时，才会写数据内存。寄存器文件的两个写端口允许每个时钟周期更新两个寄存器(比如pop指令，会写入 `%rsp` 和目标寄存器)，不过可以用特殊的寄存器ID 0xF 作为端口地址，来表明不该执行的写操作。
 
 
 ### SEQ 阶段的实现
@@ -161,7 +162,7 @@ SEQ 的实现包括
 - need_valC 表示是否需要变量，若需要，"Align" 会根据 need_regids 值取字节 1～8 或字节 2～9
 
 **HCL**
-```txt
+```hcl
 bool need_regids = icode in {IRRMOVQ, IOPQ, IPUSHQ, IPOPQ, IIRMOVQ, IRMMOVQ, IMRMOVQ}
 ```
 
@@ -172,7 +173,7 @@ bool need_regids = icode in {IRRMOVQ, IOPQ, IPUSHQ, IPOPQ, IIRMOVQ, IRMMOVQ, IMR
 - 读端口的地址输入为 srcA 和 srcB，写端口的地址为 dstE 和 dstM。如果某个地址端口上的值为 0xF(RNODE)，则表示不需要访问寄存器
 
 **HCL**
-```txt
+```hcl
 word srcA = [
     icode in {IRRMOVQ, IRMMOVQ,IOPQ, IPUSHQ}: rA;
     icode in {IPOPQ, IRET}: RRSP;
@@ -189,7 +190,7 @@ word srcA = [
 - 检测条件码寄存器，判断是否该选择分支
 
 **HCL**
-```txt
+```hcl
 word aluA = [
     icode in {IRRMOVQ, IOPQ}: valA;
     icode in {IIRMOVQ, IRMMOVQ, IMRMOVQ}: valC;
@@ -215,7 +216,7 @@ bool set_cc = icode in {IOPQ};
 
 ![SEQ 更新PC阶段](SEQ_PC_update_stage.png)
 
-```txt
+```hcl
 word new_pc = [
     icode == ICALL: valC;
     icode == IJXX && Cnd: valC;
@@ -263,23 +264,23 @@ word new_pc = [
 
 ### 数据冒险
 
-在上一条指令的还未写回指定寄存器时，下一条指令就至少执行到解码阶段（即从指定寄存器取指），此时会取到一个错误值
+在上一条指令的还未写入指定寄存器时，下一条指令就至少执行到解码阶段（即从指定寄存器取指），此时会取到一个错误值
 
 #### 用暂停来避免数据冒险
-将下一条指令暂停在译码阶段，直到上一条指令完成写回，类似于插入 `nop` 指令，有性能问题
+将下一条指令暂停在 Decode 阶段，直到上一条指令完成写入，类似于插入 `nop` 指令，有性能问题
 ![暂停 stall](data_hazard_stall.png)
 
 #### 用转发来避免数据冒险
 
 数据转发(data forwarding)也称旁路(bypassing)，分三种情况讨论。
 
-1. 译码阶段发现`%rax`是操作数 valB 的源寄存器，而在之前指令的写回阶段写端口 E 上还有一个对 `%rax` 未进行的写。只要简单地将提供到端口 E 的数据字(信号 W_valE)作为操作数 valB 的值，就能避免暂停;
+1.  Decode阶段发现`%rax`是操作数 valB 的源寄存器，而在之前指令的 Write 阶段写端口 E 上还有一个对 `%rax` 未进行的写。只要简单地将提供到端口 E 的数据字(信号 W_valE)作为操作数 valB 的值，就能避免暂停;
 ![转发 forwarding](data_hazard_forwarding_1.png)
 
-2. 译码阶段发现`%rax`是操作数 valB 的源寄存器，在之前指令的写回阶段写端口 E 上还有一个对 `%rdx` 未进行的写，在访存阶段写端口 E 上有一个对 `%rax` 未进行的写。则会将写回阶段的数据字(W_valE) 作为操作数 valA 和 访存阶段的数据字(M_valE) 作为操作数 valB。
+2.  Decode 阶段发现`%rax`是操作数 valB 的源寄存器，在之前指令的 Write 阶段写端口 E 上还有一个对 `%rdx` 未进行的写，在 Memory 阶段写端口 E 上有一个对 `%rax` 未进行的写。则会将 Write 阶段的数据字(W_valE) 作为操作数 valA 和 Memory 阶段的数据字(M_valE) 作为操作数 valB。
 ![转发 forwarding](data_hazard_forwarding_2.png)
 
-3. 将新计算的值从执行阶段传到译码阶段。将访存阶段的 M_valE 作为操作数 valA，将 ALU 的输出 e_valE 作为操作数 valB。译码阶段只要在时钟周期结束前生成 valA 和 valB，就能保证寄存器 E 装载上 valA 和 valB。
+3. 将新计算的值从执行阶段传到 Decode 阶段。将 Memory 阶段的 M_valE 作为操作数 valA，将 ALU 的输出 e_valE 作为操作数 valB。 Decode 阶段只要在时钟周期结束前生成 valA 和 valB，就能保证寄存器 E 装载上 valA 和 valB。
 ![转发 forwarding](data_hazard_forwarding_3.png)
 
 
@@ -294,7 +295,7 @@ word new_pc = [
 
 #### 避免控制冒险
 
-对于 ret 指令，只有等到 ret 指令执行到写回阶段时才能继续下一条指令(即 call 的下一条)，通过插入全阶段 bubble 来避免冒险。
+对于 ret 指令，只有等到 ret 指令执行到 Write 阶段时才能继续下一条指令(即 call 的下一条)，通过插入全阶段 bubble 来避免冒险。
 对于 jXX 和 cmovXX 分支指令，通过插入部分阶段的 bubble 来避免。如下图，0x016 和 0x020 在分支预测失败后不应存在，所幸它们均未执行到阶段 Execute，因此不会改动条件寄存器 CC。在两条指令后插入还未执行阶段的 bubble 来取消这两条指令(有时也称为指令排除 instruction squashing)，并取出下一条指令，不会有副作用。
 ![分支预测失败](mispredicted_branch.png)
 
@@ -314,11 +315,11 @@ word new_pc = [
 
 #### PC 选择和取指阶段
 
-![PIPE PC选择和取指](PIPE_PC_seletion_and_fetch.png)
+![PIPE PC选择和取指](PIPE_PC_seletion_and_fetch_stage.png)
 
 HCL 示例：
 
-```txt
+```hcl
 word f_pc = [
     M_icode == IJXX && !M_Cnd: M_valA;
     W_icode == IRET: W_valM;
@@ -340,19 +341,59 @@ word f_stat = [
 
 #### 译码和写回阶段
 
-![PIPE 译码和写回](PIPE_decode_and_write.png)
+![PIPE 译码和写回](PIPE_decode_and_write_stage.png)
+
+这个阶段有很多转发逻辑。
+
+| 数据字  | 寄存器ID | 源描述                        |
+|--------|---------|------------------------------|
+| e_valE | e_dstE  | ALU输出                       |
+| m_valM | M_dstM  | 内存输出                       |
+| M_valE | M_dstE  | Memory 阶段中对端口 E 未进行的写 |
+| W_valM | W_dstM  | Write 阶段中对端口 M 未进行的写  |
+| W_valE | W_dstE  | Write 阶段中对端口 E 未进行的写  |
+
+如果不满足任何转发条件，这个块的输出应当为 d_rvalA，即从寄存器端口 A 读出的值。
 
 HCL 示例：
 
-```txt
-word d_dstE = [
-    D_icode in {IRRMOVQ,IIRMOVQ, IOPQ}: D_rB;
-    D_icode in {IPUSHQ, IPOPQ, ICALL, IRET}: RRSP;
-    1: RNODE;
-]
+```hcl
+word d_valA = [                         # 注意优先级
+    D_icode in {ICALL, IJXX}: D_valP;   # PC
+    d_srcA == e_dstE: e_valE;           # 从 ALU 结果转发
+    d_srcA == M_dstM: m_valM;           # 从 Memory 阶段转发
+    d_srcA == M_dstE: M_valE;           # 从 Memory 阶段转发
+    d_srcA == W_dstM: W_valM;           # 从 Write 阶段转发
+    d_srcA == W_dstE: W_valE;           # 从 Write 阶段转发
+    1: d_rvalA;                         # 从 rA 读取
+];
 ```
 
-#### 
+上述 HCL 会先检测执行阶段的转发源，然后是访存，最后是写回。(好处： 当寄存器值覆盖，会以最近的值覆盖旧值，即最新指令的优先级高于旧指令的优先级，处于 Decode 阶段的指令的上一条处于 Execute 阶段，再上一条处于 Memory 阶段，再上一条是 Write 阶段)
+
+只有 `popq %rsp` 会关心访存或写回中两个源的优先级，因为只有这条指令会写 2 个寄存器。
+
+
+写回阶段输出的系统 Stat 是根据写回寄存器的 W_stat判断的，另外还需处理一下气泡：
+```hcl
+word Stat = [
+    W_stat == SBUB: SAOK;
+    1: W_stat;
+];
+```
+
+#### 执行阶段
+
+Set CC 由 m_stat 和 W_stat 控制，当出现异常时更新条件码。
+
+![PIPE 执行阶段](PIPE_excute_stage.png)
+
+#### 访存阶段
+
+去掉了 SEQ 的 Memory 阶段的 "Data" 块，这个块用来让 `call` 指令在 valP 和 valA 中做选择。
+PIPE 在 Decode 阶段使用了 "Sel+Fwd A" 做代替。
+![PIPE 访存阶段](PIPE_memory_stage.png)
+
 
 ## 补充
 

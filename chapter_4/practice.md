@@ -194,12 +194,12 @@ C <= B && B <= A: B;
 | PC Update | PC <- valC           | PC <- valC=0x041            |
 
 ## 4.19
-```txt
+```hcl
 bool need_valC = icode in {IIRMOVQ, IRMMOVQ, IMRMOVQ, IJXX, ICALL}
 ```
 
 ## 4.20
-```txt
+```hcl
 word srcB = [
     icode in {IRMMOVQ, IMRMOVQ, IOPQ}: rB;
     icode in {IPUSHQ, IPOPQ, ICALL, IRET}: RRSP;
@@ -208,7 +208,7 @@ word srcB = [
 ```
 
 ## 4.21
-```txt
+```hcl
 word dstM = [
     icode in {IMRMOVQ, IPOPQ}: rA;
     1: RNODE
@@ -219,7 +219,7 @@ word dstM = [
 dstM 端口优先级高
 
 ## 4.23
-```txt
+```hcl
 word aluB = [
     icode in {IRMMOVQ, IMRMOVQ, IOPQ, IPOPQ, IPUSHQ, ICALL, IRET}: valB;
     icode in {IRRMOVQ, IIRMOVQ}: 0
@@ -227,7 +227,7 @@ word aluB = [
 ```
 
 ## 4.24
-```txt
+```hcl
 word dstE = [
     icode in {IRRMOVQ} && Cnd: rB;
     icode in {IIRMOVQ, IOPQ}: rB;
@@ -237,7 +237,7 @@ word dstE = [
 ```
 
 ## 4.25
-```txt
+```hcl
 word mem_data = [
     icode in {IPUSHQ, IRMMOVQ}: valA;
     icode == ICALL: valP;
@@ -245,12 +245,12 @@ word mem_data = [
 ```
 
 ## 4.26
-```txt
+```hcl
 word mem_write = icode in {IPUSHQ, IRRMMOVQ, ICALL};
 ```
 
 ## 4.27
-```txt
+```hcl
 word Stat = [
     imem_error || dmem_error: SADR;
     !instr_valid: SINS;
@@ -290,7 +290,7 @@ $$
 
 ## 4.30
 
-```txt
+```hcl
 word f_stat = [
     imem_error: SADR;
     !instr_valid: SINS;
@@ -301,10 +301,61 @@ word f_stat = [
 
 ## 4.31
 
-```txt
+```hcl
 word d_dstE = [
     D_icode in {IRRMOVQ,IIRMOVQ, IOPQ}: D_rB;
     D_icode in {IPUSHQ, IPOPQ, ICALL, IRET}: RRSP;
     1: RNODE;
+]
+```
+
+## 4.32
+
+Execute 阶段中 `popq` 的 e_dstE 为 0x108，之后在 Memory 阶段传递给 M_dstE，所以 `%rax` 会先拿到 0x108 而不是 5，与预期不符。
+
+## 4.33
+
+```asm
+irmovq $5, %rdx
+irmovq $0x100, %rsp
+rmmovq %rdx, 0(%rsp)
+nop
+nop
+popq %rax
+```
+同样会导致 `%rax` 拿到 0x108，只不过是从 Write 阶段转发的。
+
+## 4.34
+
+```hcl
+word d_valB = [                        
+    d_srcB == e_dstE: e_valE;           # 从 ALU 结果转发
+    d_srcB == M_dstM: m_valM;           # 从 Memory 阶段转发
+    d_srcB == M_dstE: M_valE;           # 从 Memory 阶段转发
+    d_srcB == W_dstM: W_valM;           # 从 Write 阶段转发
+    d_srcB == W_dstE: W_valE;           # 从 Write 阶段转发
+    1: d_rvalB;                         # 从 rB 读取
+];
+```
+
+## 4.35
+
+```asm
+irmovq $0x123,%rax
+irmovq $0x321,%rdx
+xorq %rcx,%rcx
+cmovne %rax,%rdx
+addq %rdx,%rdx
+halt
+```
+如果使用 E_dstE，条件传送源值 0x123 被转发到 ALU 的输入 valA，而 valB 是正确的 0x321，得到结果为 0x444（正确结果为 0x666）。
+
+
+## 4.36
+
+```hcl
+word m_stat = [
+    dmem_error: SADR;
+    1: M_stat;
 ]
 ```
