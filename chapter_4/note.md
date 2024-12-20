@@ -122,7 +122,7 @@
 
 ### 硬件结构
 
-![SEQ硬件结构](SEQ_hardware_implementation.png)
+![SEQ硬件结构](SEQ_hardware_sturcture.png)
 
 - 白色方框表示时钟寄存器，程序计数器 PC 是 SEQ 的唯一时钟寄存器
 - 浅蓝色方框表示硬件单元，当成“黑盒子”使用，不关心细节
@@ -149,6 +149,210 @@ SEQ 的实现包括
 每个时钟周期，程序计数器都会装载新的指令地址；只有在执行整数运算时，才会装载条件码寄存器；只有在执行 rmmovq、pushq和call指令时，才会写数据内存。寄存器文件的两个写端口允许每个时钟周期更新两个寄存器(比如pop指令，会写回%rsp和目标寄存器)，不过可以用特殊的寄存器ID 0xF 作为端口地址，来表明不该执行的写操作。
 
 
+### SEQ 阶段的实现
+#### 1. 取指阶段
+
+![SEQ 取指阶段](SEQ_fetch_stage.png)
+- 以 PC 作为第 1 个字节(字节 0)，一次从内存中读取 10 个字节
+- "Split" 将第 1 个字节分成 4 位的两段，分别为 icode 和 ifun
+- 根据 icode 值，计算三个 1 位的信号 instr_valid，need_regids，need_valC
+- instr_valid 表示指令是否合法，若不合法，icode 和 ifun 会变成指令 NOP 的内容
+- need_regids 表示是否需要寄存器，若需要，第 2 个字节(字节 1)会被分割为 rA 和 rB 寄存器，若只需要 1 个寄存器，另一个会被置为 0xF(RNODE)
+- need_valC 表示是否需要变量，若需要，"Align" 会根据 need_regids 值取字节 1～8 或字节 2～9
+
+**HCL**
+```txt
+bool need_regids = icode in {IRRMOVQ, IOPQ, IPUSHQ, IPOPQ, IIRMOVQ, IRMMOVQ, IMRMOVQ}
+```
+
+#### 2. 译码和写回阶段
+
+![SEQ 译码和写回阶段](SEQ_decode_and_write_back_stage.png)
+
+- 读端口的地址输入为 srcA 和 srcB，写端口的地址为 dstE 和 dstM。如果某个地址端口上的值为 0xF(RNODE)，则表示不需要访问寄存器
+
+**HCL**
+```txt
+word srcA = [
+    icode in {IRRMOVQ, IRMMOVQ,IOPQ, IPUSHQ}: rA;
+    icode in {IPOPQ, IRET}: RRSP;
+    1: RNODE; # don't need register
+]
+```
+
+#### 3. 执行阶段
+
+![SEQ 执行阶段](SEQ_execute_stage.png)
+
+- aluB 在前，aluA 在后，为了使 subq 指令是 valB-valA
+- 根据 ALU 的值，设置条件码寄存器
+- 检测条件码寄存器，判断是否该选择分支
+
+**HCL**
+```txt
+word aluA = [
+    icode in {IRRMOVQ, IOPQ}: valA;
+    icode in {IIRMOVQ, IRMMOVQ, IMRMOVQ}: valC;
+    icode in {ICALL, IPUSHQ}: -8;
+    icode in {IRET, IPOPQ}: 8;
+]
+
+word alufun = [
+    icode == IOPQ: ifun;
+    1: ALUADD;
+]
+
+bool set_cc = icode in {IOPQ};
+```
+
+#### 4. 访存阶段
+
+![SEQ 访存阶段](SEQ_memory_access_stage.png)
+
+从内存中读出的值形成信号 valM。
+
+#### 5. 更新 PC 阶段
+
+![SEQ 更新PC阶段](SEQ_PC_update_stage.png)
+
+```txt
+word new_pc = [
+    icode == ICALL: valC;
+    icode == IJXX && Cnd: valC;
+    icode == IRET: valM;
+    1: valP;
+]
+```
+
+## 流水线
+
+可以提高吞吐量(throughput)，但是会有延迟(latency)
+
+流水线的局限性
+- 不一致的划分：不同阶段的延迟不同，导致延迟低的阶段需要配合延迟高的阶段
+- 流水线过深：由于到寄存器的拷贝时间固定，流水线阶段越多，拷贝的延迟越长，导致收益下降
+
+## SEQ+处理器(Y86-64 流水线设计)
+
+将 PC 的计算提前到流水线开始的时候，由上次流水线结果来计算，无需专门的 PC 寄存器保存。这种改动成为电路重定时(circuit retiming)。
+
+![SEQ+硬件结构](SEQ-plus_hardware_structure.png)
+
+## PIPE-处理器
+
+*\- 表示跟最终实现相比还差一点性能*
+
+![PIPE-硬件结构](PIPE-minus_hardware_structure.png)
+
+与顺序设计 SEQ 几乎一样的硬件单元，但是有流水线寄存器分隔开这些阶段。
+流水线寄存器中的白色方框表示真实的硬件（与SEQ的白色圆圈不同）
+
+|   流水线寄存器  |         阶段位置       |                                保存内容                                    |
+|---------------|-----------------------|--------------------------------------------------------------------------|
+|F              |                       | 保存程序计数器的预测值                                                       |
+|D              |Fetch 和 Decode 之间    | 保存取出的指令的信息，即将由译码阶段处理                                        |
+|E              |Decode 和 Execute 之间  | 保存译码的指令和从寄存器文件读出的值的信息，即将由执行阶段处理                      |
+|M              |Execute 和 Memory 之间  | 保存执行的指令的结果、用于处理条件转移的分支条件和分支目标的信息，即将由执行阶段处理   |
+|W              |Memory 和 Feedback 之间 | 将计算反馈路径写入寄存器文件，当完成 ret 指令时，还要向 PC 选择逻辑提供返回地址      |
+
+
+## 流水线冒险(hazard)
+
+- 数据相关：下一条指令会使用到这一条指令计算出的结果
+- 控制相关：下一条指令的位置收到这一条指令的控制，例如在跳转、调用或返回时
+
+### 数据冒险
+
+在上一条指令的还未写回指定寄存器时，下一条指令就至少执行到解码阶段（即从指定寄存器取指），此时会取到一个错误值
+
+#### 用暂停来避免数据冒险
+将下一条指令暂停在译码阶段，直到上一条指令完成写回，类似于插入 `nop` 指令，有性能问题
+![暂停 stall](data_hazard_stall.png)
+
+#### 用转发来避免数据冒险
+
+数据转发(data forwarding)也称旁路(bypassing)，分三种情况讨论。
+
+1. 译码阶段发现`%rax`是操作数 valB 的源寄存器，而在之前指令的写回阶段写端口 E 上还有一个对 `%rax` 未进行的写。只要简单地将提供到端口 E 的数据字(信号 W_valE)作为操作数 valB 的值，就能避免暂停;
+![转发 forwarding](data_hazard_forwarding_1.png)
+
+2. 译码阶段发现`%rax`是操作数 valB 的源寄存器，在之前指令的写回阶段写端口 E 上还有一个对 `%rdx` 未进行的写，在访存阶段写端口 E 上有一个对 `%rax` 未进行的写。则会将写回阶段的数据字(W_valE) 作为操作数 valA 和 访存阶段的数据字(M_valE) 作为操作数 valB。
+![转发 forwarding](data_hazard_forwarding_2.png)
+
+3. 将新计算的值从执行阶段传到译码阶段。将访存阶段的 M_valE 作为操作数 valA，将 ALU 的输出 e_valE 作为操作数 valB。译码阶段只要在时钟周期结束前生成 valA 和 valB，就能保证寄存器 E 装载上 valA 和 valB。
+![转发 forwarding](data_hazard_forwarding_3.png)
+
+
+#### 加载/使用数据冒险
+
+需要从内存中取数据时，由于取数据较慢，无法通过单纯转发来避免数据冒险，需要同时使用暂停和转发两种手段。称为加载互锁(load interlock)。
+
+
+### 控制冒险
+
+分支预测: 对于 call 和 jmp 来说，下一条指令的地址是指令中的常数 valC，而对于其他指令来说就是 valP。因此，通过预测 PC 的下一个值，在大多数情况下，能达到每个时钟周期发射一条新指令的目的。对于大多数指令类型来说，预测是完全可靠的。
+
+#### 避免控制冒险
+
+对于 ret 指令，只有等到 ret 指令执行到写回阶段时才能继续下一条指令(即 call 的下一条)，通过插入全阶段 bubble 来避免冒险。
+对于 jXX 和 cmovXX 分支指令，通过插入部分阶段的 bubble 来避免。如下图，0x016 和 0x020 在分支预测失败后不应存在，所幸它们均未执行到阶段 Execute，因此不会改动条件寄存器 CC。在两条指令后插入还未执行阶段的 bubble 来取消这两条指令(有时也称为指令排除 instruction squashing)，并取出下一条指令，不会有副作用。
+![分支预测失败](mispredicted_branch.png)
+
+## 异常处理
+
+细节一：异常优先级由流水线深度决定，流水线越深，优先级越高
+细节二：错误预测的分支中存在异常，此异常应该被忽略
+细节三：异常指令之后的指令修改了系统状态，导致异常消失，此类行为应当被禁止
+
+## PIPE 处理器
+
+![PIPE 硬件结构](PIPE_hardware_structure.png)
+
+### PIPE 的阶段实现
+
+小写字母表示结果，大写字母表示数据源来自于某个寄存器。
+
+#### PC 选择和取指阶段
+
+![PIPE PC选择和取指](PIPE_PC_seletion_and_fetch.png)
+
+HCL 示例：
+
+```txt
+word f_pc = [
+    M_icode == IJXX && !M_Cnd: M_valA;
+    W_icode == IRET: W_valM;
+    1: F_predPC;
+];
+
+word f_predPC = [
+    f_icode in {IJXX, ICALL}: f_valC;
+    1: f_valP;
+];
+
+word f_stat = [
+    imem_error: SADR;
+    !instr_valid: SINS;
+    f_icode == IHALT: SHLT;
+    1: SAOK;
+];
+```
+
+#### 译码和写回阶段
+
+![PIPE 译码和写回](PIPE_decode_and_write.png)
+
+HCL 示例：
+
+```txt
+word d_dstE = [
+    D_icode in {IRRMOVQ,IIRMOVQ, IOPQ}: D_rB;
+    D_icode in {IPUSHQ, IPOPQ, ICALL, IRET}: RRSP;
+    1: RNODE;
+]
+```
+
+#### 
 
 ## 补充
 

@@ -192,3 +192,119 @@ C <= B && B <= A: B;
 | Access    | M8[valE] <- valP     | M8[120] <- valP=0x040       |
 | Write     | R[%rsp] <- valE      | R[%rsp] <- valE=120         |
 | PC Update | PC <- valC           | PC <- valC=0x041            |
+
+## 4.19
+```txt
+bool need_valC = icode in {IIRMOVQ, IRMMOVQ, IMRMOVQ, IJXX, ICALL}
+```
+
+## 4.20
+```txt
+word srcB = [
+    icode in {IRMMOVQ, IMRMOVQ, IOPQ}: rB;
+    icode in {IPUSHQ, IPOPQ, ICALL, IRET}: RRSP;
+    1: RNODE;
+]
+```
+
+## 4.21
+```txt
+word dstM = [
+    icode in {IMRMOVQ, IPOPQ}: rA;
+    1: RNODE
+]
+```
+
+## 4.22
+dstM 端口优先级高
+
+## 4.23
+```txt
+word aluB = [
+    icode in {IRMMOVQ, IMRMOVQ, IOPQ, IPOPQ, IPUSHQ, ICALL, IRET}: valB;
+    icode in {IRRMOVQ, IIRMOVQ}: 0
+]
+```
+
+## 4.24
+```txt
+word dstE = [
+    icode in {IRRMOVQ} && Cnd: rB;
+    icode in {IIRMOVQ, IOPQ}: rB;
+    icode in {IPUSHQ, IPOPQ, ICALL, IRET}: RRSP;
+    1: RNODE;
+]
+```
+
+## 4.25
+```txt
+word mem_data = [
+    icode in {IPUSHQ, IRMMOVQ}: valA;
+    icode == ICALL: valP;
+]
+```
+
+## 4.26
+```txt
+word mem_write = icode in {IPUSHQ, IRRMMOVQ, ICALL};
+```
+
+## 4.27
+```txt
+word Stat = [
+    imem_error || dmem_error: SADR;
+    !instr_valid: SINS;
+    icode == IHALT: SHLT;
+    1: SAOK;
+]
+```
+
+## 4.28
+A. 
+在 C 之后
+吞吐量 = 5.26 GIPS
+延迟 = 380 ps
+
+B. 
+在 B 和 D 之后
+吞吐量 = 7.69 GIPS
+延迟 = 390 ps
+
+C.
+在 A、C、D 之后
+吞吐量 = 9.09 GIPS
+延迟 = 440 ps
+
+D.
+5阶段，在A、B、C、D后分别加1个寄存器
+吞吐量 = 10 GIPS
+延迟 = 500 ps
+
+## 4.29
+$$
+延迟 = (300/k+20)*k = 20k + 300 ps\\
+\\
+吞吐量 = \frac{1000}{(300/k+20)} GIPS
+$$
+当 k -> ∞ 时，吞吐量为 50 GIPS
+
+## 4.30
+
+```txt
+word f_stat = [
+    imem_error: SADR;
+    !instr_valid: SINS;
+    f_icode == IHALT: SHLT;
+    1: SAOK;
+]
+```
+
+## 4.31
+
+```txt
+word d_dstE = [
+    D_icode in {IRRMOVQ,IIRMOVQ, IOPQ}: D_rB;
+    D_icode in {IPUSHQ, IPOPQ, ICALL, IRET}: RRSP;
+    1: RNODE;
+]
+```
