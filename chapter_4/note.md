@@ -395,6 +395,79 @@ PIPE 在 Decode 阶段使用了 "Sel+Fwd A" 做代替。
 ![PIPE 访存阶段](PIPE_memory_stage.png)
 
 
+### 流水线控制逻辑
+
+#### 检查条件
+
+| 条件          |           触发条件                                              |
+|--------------|----------------------------------------------------------------|
+| 处理 ret      | IRET in {D_icode, E_icode, M_icode}                            |
+| 加载/使用冒险  | E_icode in {IMRMOVQ, IPOPQ} && E_dstM in {d_srcA, d_srcB}      |
+| 预测错误分支   | E_icode == IJXX && !e_Cnd                                      |
+| 异常          | m_stat in {SADR, SINS, SHLT} \|\| W_stat in {SADR, SINS, SHLT} |
+
+不需要担心多异常情况，已经在异常处理中解决。
+
+#### 流水线控制逻辑的动作
+
+注意⚠️：以下的 FDEMW 指的是寄存器而不是阶段
+
+| 条件 \ 寄存器 |  F  |  D  |  E  |  M  |  W  |
+|-------------|------|-----|-----|-----|-----|
+| 处理 ret     | 暂停 | 气泡 | 正常 | 正常 | 正常 |
+| 加载/使用冒险 | 暂停 | 暂停 | 气泡 | 正常 | 正常 |
+| 预测错误分支  | 正常 | 气泡 | 气泡 | 正常 | 正常 |
+
+
+#### 控制条件的组合
+
+1. 跳转指令和返回指令
+
+![跳转指令和返回指令](jxx_and_ret.png)
+
+图中这段汇编代码，`jne` 在 Execute 阶段并不会执行跳转，因此期望执行的指令是 `irmovq` 而非 `ret`。
+针对这种组合的解决方法是暂停寄存器 F，同时向寄存器 D 和 E 中插入气泡。
+在下一个时钟周期 PC 的选择逻辑会选择 `jne` 的下一条指令地址，而不是从 predicted PC 中取(即 `ret`)。所以无论寄存器 F 发生了什么都没有关系。
+
+2. 加载/使用冒险和返回指令
+
+![加载/使用冒险和返回指令](load_use_hazard_and_ret.png)
+
+`mrmovq` 的目的地址是 `%rsp` 而 `ret` 指令默认使用的寄存器也是 `%rsp`。
+加载/使用冒险暂停了寄存器 F、D，并往 E 中插入气泡，而处理 ret 则是暂停 F，并往 D 中插入气泡，对 D 寄存器的操作出现冲突。
+实际上只需对 D 进行暂停即可。
+此中组合需要特殊处理。
+
+#### 控制逻辑的实现
+
+对于寄存器 F 和 D 是否需要暂停，有
+
+```hcl
+bool F_stall = 
+    E_icode in {IMRMOVQ, IPOPQ} && E_dstM in {d_srcA, d_srcB} || # 加载/使用冒险
+    IRET in {D_icode, E_icode, M_icode}; # 处理 ret
+
+bool D_stall = 
+    E_icode in {IMRMOVQ, IPOPQ} && E_dstM in {d_srcA, d_srcB}; # 加载/使用冒险
+```
+
+对于寄存器 D 是否需要插入气泡，有
+
+```hcl
+bool D_bubble =
+    (E_icode == jXX && !e_Cnd) ||  # 分支预测错误
+    !(E_icode in {IMRMOVQ, IPOPQ} && E_dstM in {d_srcA, d_srcB}) && # 非加载/使用冒险和ret的组合
+    IRET in {D_icode, E_icode, M_icode}; 
+```
+
+对于寄存器 E 是否需要插入气泡，有
+
+```hcl
+bool E_bubble = 
+    (E_icode == jXX && !e_Cnd) || # 分支预测错误
+    E_icode in {IMRMOVQ, IPOPQ} && E_dstM in {d_srcA, d_srcB};  # 加载/使用冒险
+```
+
 ## 补充
 
 ### 如何从01转换为图形

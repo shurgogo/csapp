@@ -385,7 +385,7 @@ unordered 表示支持 NaN 的比较
 ![浮点数比较标志位](fp_compare_flags.png)
 
 ## 补充
-### 为什么 cmov 比 jmp 高效
+### 为什么 cmov 比 jmp 高效(粗略估计，根据第四章并非如此)
 
 CPU 流水线阶段：
 

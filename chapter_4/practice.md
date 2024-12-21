@@ -359,3 +359,67 @@ word m_stat = [
     1: M_stat;
 ]
 ```
+
+## 4.37
+
+```asm
+    xorq %rdx, %rdx
+    jne target
+target: 
+    ret
+    irmovq $1, %rdx
+    halt
+```
+
+
+## 4.38
+
+```asm
+    mrmovq 0(%rbx), %rsp  
+    ret
+    halt
+rtnpt: 
+    irmovq $5, %rsi
+    halt
+```
+
+假设 0(%rbx) 保存了 ret 的地址 rpnpt（即 `irmovq $5, %rsi` 的地址）
+
+## 4.39
+
+```hcl
+bool D_stall = 
+    E_icode in {IMRMOVQ, IPOPQ} && E_dstM in {d_srcA, d_srcB}; # 加载/使用冒险
+```
+
+## 4.40
+
+```hcl
+bool E_bubble = 
+    (E_icode == jXX && !e_Cnd) || # 分支预测错误
+    E_icode in {IMRMOVQ, IPOPQ} && E_dstM in {d_srcA, d_srcB};  # 加载/使用冒险
+```
+
+## 4.41
+
+```hcl
+bool set_cc = 
+    E_icode == OPq &&
+    !m_stat in {SADR, SHLT, SINS} && !W_stat in {SADR, SHLT, SINS};
+```
+
+## 4.42
+```hcl
+bool M_bubble = m_stat in {SADR, SHLT, SINS} || W_stat in {SADR, SHLT, SINS};
+
+bool W_stall = W_stat in {SADR, SHLT, SINS};
+```
+
+## 4.43
+平均惩罚会降低 0.02 个周期，CPI 达到 1.25
+
+## 4.44
+
+A. 8.5, 8
+B. 1, 0
+C. 9.5, 8
